@@ -15,6 +15,7 @@ static const char *TAG = "lcd_bsp";
 #define DBG_PRINTF(...) do { } while (0)
 #endif
 static volatile bool s_lvgl_flush_ready_enabled = false;
+extern void ui_init(void) __attribute__((weak));
 
 #define SH8601_ID 0x86
 #define CO5300_ID 0xff
@@ -264,6 +265,19 @@ static void panel_known_good_render_test(esp_lcd_panel_handle_t panel_handle)
 #endif
 }
 
+static void create_fallback_ui(void)
+{
+  lv_obj_t *scr = lv_scr_act();
+  lv_obj_set_style_bg_color(scr, lv_color_hex(0x0D1B2A), 0);
+  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+  lv_obj_t *label = lv_label_create(scr);
+  lv_label_set_text(label, "ESP32-S3 Knob Touch\nUI fallback actief");
+  lv_obj_set_style_text_color(label, lv_color_hex(0xE0E1DD), 0);
+  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_center(label);
+}
+
 void lcd_lvgl_Init(void)
 {
   static lv_disp_draw_buf_t disp_buf; // contains internal graphic buffer(s) called draw buffer(s)
@@ -410,6 +424,15 @@ void lcd_lvgl_Init(void)
     DBG_PRINTF("[DBG] lcd_lvgl_Init: starting lv_demo_widgets\r\n");
     lv_demo_widgets();      /* A widgets example */
     DBG_PRINTF("[DBG] lcd_lvgl_Init: lv_demo_widgets started\r\n");
+#else
+    if (ui_init) {
+      DBG_PRINTF("[DBG] lcd_lvgl_Init: starting ui_init\r\n");
+      ui_init();
+      DBG_PRINTF("[DBG] lcd_lvgl_Init: ui_init done\r\n");
+    } else {
+      DBG_PRINTF("[DBG] lcd_lvgl_Init: ui_init missing, fallback UI\r\n");
+      create_fallback_ui();
+    }
 #endif
     //lv_demo_music();        /* A modern, smartphone-like music player demo. */
     //lv_demo_stress();       /* A stress test for LVGL. */
