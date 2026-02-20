@@ -25,9 +25,25 @@ static void encoder_poll_update_ui(void);
 
 static uint8_t s_encoder_prev_state = 0;
 static int8_t s_encoder_step_accum = 0;
+static uint32_t s_encoder_last_poll_ms = 0;
+static bool s_encoder_ui_missing_logged = false;
 
 #define SH8601_ID 0x86
 #define CO5300_ID 0xff
+
+#if LCD_ENCODER_USE_ALT_PINSET
+#define LCD_ENCODER_PIN_A EXAMPLE_PIN_NUM_ENCODER_A_ALT
+#define LCD_ENCODER_PIN_B EXAMPLE_PIN_NUM_ENCODER_B_ALT
+#else
+#define LCD_ENCODER_PIN_A EXAMPLE_PIN_NUM_ENCODER_A
+#define LCD_ENCODER_PIN_B EXAMPLE_PIN_NUM_ENCODER_B
+#endif
+
+#if LCD_ENCODER_DEBUG_LOGS
+#define ENCODER_LOGI(...) ESP_LOGI(TAG, __VA_ARGS__)
+#else
+#define ENCODER_LOGI(...) do { } while (0)
+#endif
 
 
 
@@ -291,7 +307,7 @@ static void encoder_init(void)
 {
 #if LCD_USE_ROTARY_ENCODER
   const gpio_config_t cfg = {
-      .pin_bit_mask = (1ULL << EXAMPLE_PIN_NUM_ENCODER_A) | (1ULL << EXAMPLE_PIN_NUM_ENCODER_B),
+      .pin_bit_mask = (1ULL << LCD_ENCODER_PIN_A) | (1ULL << LCD_ENCODER_PIN_B),
       .mode = GPIO_MODE_INPUT,
       .pull_up_en = GPIO_PULLUP_ENABLE,
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -301,10 +317,16 @@ static void encoder_init(void)
     ESP_LOGW(TAG, "Failed to init rotary GPIO");
     return;
   }
-  const uint8_t a = (uint8_t)gpio_get_level((gpio_num_t)EXAMPLE_PIN_NUM_ENCODER_A);
-  const uint8_t b = (uint8_t)gpio_get_level((gpio_num_t)EXAMPLE_PIN_NUM_ENCODER_B);
+  const uint8_t a = (uint8_t)gpio_get_level((gpio_num_t)LCD_ENCODER_PIN_A);
+  const uint8_t b = (uint8_t)gpio_get_level((gpio_num_t)LCD_ENCODER_PIN_B);
   s_encoder_prev_state = (uint8_t)((a << 1) | b);
   s_encoder_step_accum = 0;
+  s_encoder_last_poll_ms = 0;
+  s_encoder_ui_missing_logged = false;
+  ENCODER_LOGI("ENC init: pinA=%d pinB=%d state=%u steps=%d invert=%d poll=%dms altPins=%d",
+               LCD_ENCODER_PIN_A, LCD_ENCODER_PIN_B, s_encoder_prev_state,
+               LCD_ENCODER_STEPS_PER_DETENT, LCD_ENCODER_INVERT_DIRECTION,
+               LCD_ENCODER_POLL_INTERVAL_MS, LCD_ENCODER_USE_ALT_PINSET);
 #endif
 }
 
@@ -313,34 +335,52 @@ static void encoder_poll_update_ui(void)
 #if LCD_USE_ROTARY_ENCODER
   // Gray-code transition table for quadrature encoder.
   static const int8_t qdec[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
-  if (ui_ArcDoel == NULL) {
+  if (ui_ArcDoel == NULL || !lv_obj_is_valid(ui_ArcDoel) || lv_obj_get_screen(ui_ArcDoel) != lv_scr_act()) {
+    if (!s_encoder_ui_missing_logged) {
+      ENCODER_LOGI("ENC ui not ready/active: arc=%p valid=%d on_active_screen=%d",
+                   (void *)ui_ArcDoel,
+                   (ui_ArcDoel != NULL) ? lv_obj_is_valid(ui_ArcDoel) : 0,
+                   (ui_ArcDoel != NULL && lv_obj_is_valid(ui_ArcDoel) && lv_obj_get_screen(ui_ArcDoel) == lv_scr_act()) ? 1 : 0);
+      s_encoder_ui_missing_logged = true;
+    }
     return;
   }
+  s_encoder_ui_missing_logged = false;
 
-  const uint8_t a = (uint8_t)gpio_get_level((gpio_num_t)EXAMPLE_PIN_NUM_ENCODER_A);
-  const uint8_t b = (uint8_t)gpio_get_level((gpio_num_t)EXAMPLE_PIN_NUM_ENCODER_B);
+  const uint8_t a = (uint8_t)gpio_get_level((gpio_num_t)LCD_ENCODER_PIN_A);
+  const uint8_t b = (uint8_t)gpio_get_level((gpio_num_t)LCD_ENCODER_PIN_B);
   const uint8_t state = (uint8_t)((a << 1) | b);
   const uint8_t idx = (uint8_t)((s_encoder_prev_state << 2) | state);
+  int8_t delta = qdec[idx];
+  const uint8_t prev_state = s_encoder_prev_state;
   s_encoder_prev_state = state;
-
-  const int8_t delta = qdec[idx];
+  if (state != prev_state || delta != 0) {
+    ENCODER_LOGI("ENC raw: A=%u B=%u prev=%u state=%u idx=0x%02X delta=%d",
+                 a, b, prev_state, state, idx, delta);
+  }
+#if LCD_ENCODER_INVERT_DIRECTION
+  delta = (int8_t)(-delta);
+#endif
   if (delta == 0) {
     return;
   }
   s_encoder_step_accum += delta;
+  ENCODER_LOGI("ENC accum: delta=%d accum=%d", delta, s_encoder_step_accum);
 
-  if (s_encoder_step_accum >= LCD_ENCODER_STEPS_PER_DETENT || s_encoder_step_accum <= -LCD_ENCODER_STEPS_PER_DETENT) {
+  while (s_encoder_step_accum >= LCD_ENCODER_STEPS_PER_DETENT || s_encoder_step_accum <= -LCD_ENCODER_STEPS_PER_DETENT) {
+    const int detent = (s_encoder_step_accum > 0) ? 1 : -1;
+    s_encoder_step_accum -= (int8_t)(detent * LCD_ENCODER_STEPS_PER_DETENT);
+
     int value = lv_arc_get_value(ui_ArcDoel);
     const int min = lv_arc_get_min_value(ui_ArcDoel);
     const int max = lv_arc_get_max_value(ui_ArcDoel);
-    if (s_encoder_step_accum > 0) {
-      value++;
-    } else {
-      value--;
-    }
+    const int old_value = value;
+    value += detent;
     if (value < min) value = min;
     if (value > max) value = max;
     lv_arc_set_value(ui_ArcDoel, value);
+    ENCODER_LOGI("ENC detent: detent=%d old=%d new=%d min=%d max=%d accum_rem=%d",
+                 detent, old_value, value, min, max, s_encoder_step_accum);
 
     // Keep thermostat labels synced with the target arc value.
     if (ui_Temp) {
@@ -353,7 +393,7 @@ static void encoder_poll_update_ui(void)
       lv_snprintf(buf, sizeof(buf), "%d", value);
       lv_label_set_text(ui_Temperature1, buf);
     }
-    s_encoder_step_accum = 0;
+    ENCODER_LOGI("ENC write: arc=%d temp=%d", value, value);
   }
 #endif
 }
@@ -541,11 +581,16 @@ static void example_lvgl_unlock(void)
 static void example_lvgl_port_task(void *arg)
 {
   uint32_t task_delay_ms = EXAMPLE_LVGL_TASK_MAX_DELAY_MS;
+  const uint32_t encoder_poll_interval_ms = (LCD_ENCODER_POLL_INTERVAL_MS > 0) ? LCD_ENCODER_POLL_INTERVAL_MS : 1;
   for(;;)
   {
     if (example_lvgl_lock(-1))
     {
-      encoder_poll_update_ui();
+      const uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+      if ((now_ms - s_encoder_last_poll_ms) >= encoder_poll_interval_ms) {
+        s_encoder_last_poll_ms = now_ms;
+        encoder_poll_update_ui();
+      }
       task_delay_ms = lv_timer_handler();
       
       example_lvgl_unlock();
@@ -558,6 +603,11 @@ static void example_lvgl_port_task(void *arg)
     {
       task_delay_ms = EXAMPLE_LVGL_TASK_MIN_DELAY_MS;
     }
+#if LCD_USE_ROTARY_ENCODER
+    if (task_delay_ms > encoder_poll_interval_ms) {
+      task_delay_ms = encoder_poll_interval_ms;
+    }
+#endif
     vTaskDelay(pdMS_TO_TICKS(task_delay_ms));
   }
 }
