@@ -16,6 +16,15 @@ static const char *TAG = "lcd_bsp";
 #endif
 static volatile bool s_lvgl_flush_ready_enabled = false;
 extern void ui_init(void) __attribute__((weak));
+extern lv_obj_t *ui_ArcDoel __attribute__((weak));
+extern lv_obj_t *ui_Temp __attribute__((weak));
+extern lv_obj_t *ui_Temperature1 __attribute__((weak));
+
+static void encoder_init(void);
+static void encoder_poll_update_ui(void);
+
+static uint8_t s_encoder_prev_state = 0;
+static int8_t s_encoder_step_accum = 0;
 
 #define SH8601_ID 0x86
 #define CO5300_ID 0xff
@@ -278,6 +287,77 @@ static void create_fallback_ui(void)
   lv_obj_center(label);
 }
 
+static void encoder_init(void)
+{
+#if LCD_USE_ROTARY_ENCODER
+  const gpio_config_t cfg = {
+      .pin_bit_mask = (1ULL << EXAMPLE_PIN_NUM_ENCODER_A) | (1ULL << EXAMPLE_PIN_NUM_ENCODER_B),
+      .mode = GPIO_MODE_INPUT,
+      .pull_up_en = GPIO_PULLUP_ENABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  if (gpio_config(&cfg) != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to init rotary GPIO");
+    return;
+  }
+  const uint8_t a = (uint8_t)gpio_get_level((gpio_num_t)EXAMPLE_PIN_NUM_ENCODER_A);
+  const uint8_t b = (uint8_t)gpio_get_level((gpio_num_t)EXAMPLE_PIN_NUM_ENCODER_B);
+  s_encoder_prev_state = (uint8_t)((a << 1) | b);
+  s_encoder_step_accum = 0;
+#endif
+}
+
+static void encoder_poll_update_ui(void)
+{
+#if LCD_USE_ROTARY_ENCODER
+  // Gray-code transition table for quadrature encoder.
+  static const int8_t qdec[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
+  if (ui_ArcDoel == NULL) {
+    return;
+  }
+
+  const uint8_t a = (uint8_t)gpio_get_level((gpio_num_t)EXAMPLE_PIN_NUM_ENCODER_A);
+  const uint8_t b = (uint8_t)gpio_get_level((gpio_num_t)EXAMPLE_PIN_NUM_ENCODER_B);
+  const uint8_t state = (uint8_t)((a << 1) | b);
+  const uint8_t idx = (uint8_t)((s_encoder_prev_state << 2) | state);
+  s_encoder_prev_state = state;
+
+  const int8_t delta = qdec[idx];
+  if (delta == 0) {
+    return;
+  }
+  s_encoder_step_accum += delta;
+
+  if (s_encoder_step_accum >= LCD_ENCODER_STEPS_PER_DETENT || s_encoder_step_accum <= -LCD_ENCODER_STEPS_PER_DETENT) {
+    int value = lv_arc_get_value(ui_ArcDoel);
+    const int min = lv_arc_get_min_value(ui_ArcDoel);
+    const int max = lv_arc_get_max_value(ui_ArcDoel);
+    if (s_encoder_step_accum > 0) {
+      value++;
+    } else {
+      value--;
+    }
+    if (value < min) value = min;
+    if (value > max) value = max;
+    lv_arc_set_value(ui_ArcDoel, value);
+
+    // Keep thermostat labels synced with the target arc value.
+    if (ui_Temp) {
+      char buf[8];
+      lv_snprintf(buf, sizeof(buf), "%d", value);
+      lv_label_set_text(ui_Temp, buf);
+    }
+    if (ui_Temperature1) {
+      char buf[8];
+      lv_snprintf(buf, sizeof(buf), "%d", value);
+      lv_label_set_text(ui_Temperature1, buf);
+    }
+    s_encoder_step_accum = 0;
+  }
+#endif
+}
+
 void lcd_lvgl_Init(void)
 {
   static lv_disp_draw_buf_t disp_buf; // contains internal graphic buffer(s) called draw buffer(s)
@@ -416,6 +496,7 @@ void lcd_lvgl_Init(void)
 
   lvgl_mux = xSemaphoreCreateMutex(); //mutex semaphores
   assert(lvgl_mux);
+  encoder_init();
   xTaskCreate(example_lvgl_port_task, "LVGL", EXAMPLE_LVGL_TASK_STACK_SIZE, NULL, EXAMPLE_LVGL_TASK_PRIORITY, NULL);
   DBG_PRINTF("[DBG] lcd_lvgl_Init: lvgl task created\r\n");
   if (example_lvgl_lock(-1)) 
@@ -464,6 +545,7 @@ static void example_lvgl_port_task(void *arg)
   {
     if (example_lvgl_lock(-1))
     {
+      encoder_poll_update_ui();
       task_delay_ms = lv_timer_handler();
       
       example_lvgl_unlock();

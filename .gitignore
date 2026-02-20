@@ -6,3 +6,6 @@
 .pio/libdeps/**/src/lvgl/demos/
 .pio/libdeps/**/src/lvgl/examples/
 ExampleData/
+examples/
+Examples/
+_tmp_demo*

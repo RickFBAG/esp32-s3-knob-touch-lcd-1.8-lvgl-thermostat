@@ -27,6 +27,10 @@
 #define EXAMPLE_PIN_NUM_TOUCH_SCL 12
 #define EXAMPLE_PIN_NUM_TOUCH_SDA 11
 
+// Rotary encoder (from official 04_Encoder_Test example)
+#define EXAMPLE_PIN_NUM_ENCODER_A   8
+#define EXAMPLE_PIN_NUM_ENCODER_B   7
+
 
 //#define Backlight_Testing
 //#define EXAMPLE_Rotate_90
@@ -90,5 +94,13 @@
 
 #ifndef LCD_DEBUG_LOGS
 #define LCD_DEBUG_LOGS                    0   // 1: enable verbose [DBG] logs
+#endif
+
+#ifndef LCD_USE_ROTARY_ENCODER
+#define LCD_USE_ROTARY_ENCODER            1   // 1: enable ArcDoel control via rotary encoder
+#endif
+
+#ifndef LCD_ENCODER_STEPS_PER_DETENT
+#define LCD_ENCODER_STEPS_PER_DETENT      4   // quadrature transitions per detent
 #endif
 #endif
