@@ -27,6 +27,16 @@
 #define EXAMPLE_PIN_NUM_TOUCH_SCL 12
 #define EXAMPLE_PIN_NUM_TOUCH_SDA 11
 
+// Rotary encoder (from official 04_Encoder_Test example)
+#define EXAMPLE_PIN_NUM_ENCODER_A   8
+#define EXAMPLE_PIN_NUM_ENCODER_B   7
+#ifndef EXAMPLE_PIN_NUM_ENCODER_A_ALT
+#define EXAMPLE_PIN_NUM_ENCODER_A_ALT EXAMPLE_PIN_NUM_ENCODER_B
+#endif
+#ifndef EXAMPLE_PIN_NUM_ENCODER_B_ALT
+#define EXAMPLE_PIN_NUM_ENCODER_B_ALT EXAMPLE_PIN_NUM_ENCODER_A
+#endif
+
 
 //#define Backlight_Testing
 //#define EXAMPLE_Rotate_90
@@ -90,5 +100,29 @@
 
 #ifndef LCD_DEBUG_LOGS
 #define LCD_DEBUG_LOGS                    0   // 1: enable verbose [DBG] logs
+#endif
+
+#ifndef LCD_USE_ROTARY_ENCODER
+#define LCD_USE_ROTARY_ENCODER            1   // 1: enable ArcDoel control via rotary encoder
+#endif
+
+#ifndef LCD_ENCODER_USE_ALT_PINSET
+#define LCD_ENCODER_USE_ALT_PINSET        0   // 0: use A/B pins above, 1: use ALT pair for fast A/B tests
+#endif
+
+#ifndef LCD_ENCODER_INVERT_DIRECTION
+#define LCD_ENCODER_INVERT_DIRECTION       0   // 0: normal, 1: reverse
+#endif
+
+#ifndef LCD_ENCODER_STEPS_PER_DETENT
+#define LCD_ENCODER_STEPS_PER_DETENT      1   // example-style edge detection maps one event to one UI step
+#endif
+
+#ifndef LCD_ENCODER_POLL_INTERVAL_MS
+#define LCD_ENCODER_POLL_INTERVAL_MS      3   // common values: 1, 3, 10
+#endif
+
+#ifndef LCD_ENCODER_DEBUG_LOGS
+#define LCD_ENCODER_DEBUG_LOGS            0   // 1: log transitions/delta/detent/value writes
 #endif
 #endif
