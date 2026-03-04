@@ -23,7 +23,10 @@ extern lv_obj_t *ui_Temperature1 __attribute__((weak));
 static void encoder_init(void);
 static void encoder_poll_update_ui(void);
 
-static uint8_t s_encoder_prev_state = 0;
+static uint8_t s_encoder_a_level = 0;
+static uint8_t s_encoder_b_level = 0;
+static uint8_t s_encoder_a_debounce = 0;
+static uint8_t s_encoder_b_debounce = 0;
 static int8_t s_encoder_step_accum = 0;
 static uint32_t s_encoder_last_poll_ms = 0;
 static bool s_encoder_ui_missing_logged = false;
@@ -44,6 +47,8 @@ static bool s_encoder_ui_missing_logged = false;
 #else
 #define ENCODER_LOGI(...) do { } while (0)
 #endif
+
+#define LCD_ENCODER_EXAMPLE_DEBOUNCE_TICKS 2
 
 
 
@@ -303,6 +308,27 @@ static void create_fallback_ui(void)
   lv_obj_center(label);
 }
 
+static int8_t encoder_process_channel(uint8_t current_level, uint8_t *prev_level, uint8_t *debounce_cnt, int8_t event_delta)
+{
+  if (current_level == 0) {
+    if (current_level != *prev_level) {
+      *debounce_cnt = 0;
+    } else {
+      (*debounce_cnt)++;
+    }
+  } else {
+    if (current_level != *prev_level && ++(*debounce_cnt) >= LCD_ENCODER_EXAMPLE_DEBOUNCE_TICKS) {
+      *debounce_cnt = 0;
+      *prev_level = current_level;
+      return event_delta;
+    }
+    *debounce_cnt = 0;
+  }
+
+  *prev_level = current_level;
+  return 0;
+}
+
 static void encoder_init(void)
 {
 #if LCD_USE_ROTARY_ENCODER
@@ -319,12 +345,15 @@ static void encoder_init(void)
   }
   const uint8_t a = (uint8_t)gpio_get_level((gpio_num_t)LCD_ENCODER_PIN_A);
   const uint8_t b = (uint8_t)gpio_get_level((gpio_num_t)LCD_ENCODER_PIN_B);
-  s_encoder_prev_state = (uint8_t)((a << 1) | b);
+  s_encoder_a_level = a;
+  s_encoder_b_level = b;
+  s_encoder_a_debounce = 0;
+  s_encoder_b_debounce = 0;
   s_encoder_step_accum = 0;
   s_encoder_last_poll_ms = 0;
   s_encoder_ui_missing_logged = false;
-  ENCODER_LOGI("ENC init: pinA=%d pinB=%d state=%u steps=%d invert=%d poll=%dms altPins=%d",
-               LCD_ENCODER_PIN_A, LCD_ENCODER_PIN_B, s_encoder_prev_state,
+  ENCODER_LOGI("ENC init: pinA=%d pinB=%d A=%u B=%u steps=%d invert=%d poll=%dms altPins=%d",
+               LCD_ENCODER_PIN_A, LCD_ENCODER_PIN_B, s_encoder_a_level, s_encoder_b_level,
                LCD_ENCODER_STEPS_PER_DETENT, LCD_ENCODER_INVERT_DIRECTION,
                LCD_ENCODER_POLL_INTERVAL_MS, LCD_ENCODER_USE_ALT_PINSET);
 #endif
@@ -333,8 +362,6 @@ static void encoder_init(void)
 static void encoder_poll_update_ui(void)
 {
 #if LCD_USE_ROTARY_ENCODER
-  // Gray-code transition table for quadrature encoder.
-  static const int8_t qdec[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
   if (ui_ArcDoel == NULL || !lv_obj_is_valid(ui_ArcDoel) || lv_obj_get_screen(ui_ArcDoel) != lv_scr_act()) {
     if (!s_encoder_ui_missing_logged) {
       ENCODER_LOGI("ENC ui not ready/active: arc=%p valid=%d on_active_screen=%d",
@@ -349,14 +376,14 @@ static void encoder_poll_update_ui(void)
 
   const uint8_t a = (uint8_t)gpio_get_level((gpio_num_t)LCD_ENCODER_PIN_A);
   const uint8_t b = (uint8_t)gpio_get_level((gpio_num_t)LCD_ENCODER_PIN_B);
-  const uint8_t state = (uint8_t)((a << 1) | b);
-  const uint8_t idx = (uint8_t)((s_encoder_prev_state << 2) | state);
-  int8_t delta = qdec[idx];
-  const uint8_t prev_state = s_encoder_prev_state;
-  s_encoder_prev_state = state;
-  if (state != prev_state || delta != 0) {
-    ENCODER_LOGI("ENC raw: A=%u B=%u prev=%u state=%u idx=0x%02X delta=%d",
-                 a, b, prev_state, state, idx, delta);
+  const uint8_t prev_a = s_encoder_a_level;
+  const uint8_t prev_b = s_encoder_b_level;
+  int8_t delta = 0;
+  delta += encoder_process_channel(a, &s_encoder_a_level, &s_encoder_a_debounce, 1);
+  delta += encoder_process_channel(b, &s_encoder_b_level, &s_encoder_b_debounce, -1);
+  if (delta != 0 || a != prev_a || b != prev_b) {
+    ENCODER_LOGI("ENC raw: A=%u B=%u prevA=%u prevB=%u a_db=%u b_db=%u delta=%d",
+                 a, b, prev_a, prev_b, s_encoder_a_debounce, s_encoder_b_debounce, delta);
   }
 #if LCD_ENCODER_INVERT_DIRECTION
   delta = (int8_t)(-delta);

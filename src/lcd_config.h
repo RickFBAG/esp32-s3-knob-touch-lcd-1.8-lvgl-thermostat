@@ -115,7 +115,7 @@
 #endif
 
 #ifndef LCD_ENCODER_STEPS_PER_DETENT
-#define LCD_ENCODER_STEPS_PER_DETENT      4   // common values: 1, 2, 4
+#define LCD_ENCODER_STEPS_PER_DETENT      1   // example-style edge detection maps one event to one UI step
 #endif
 
 #ifndef LCD_ENCODER_POLL_INTERVAL_MS
