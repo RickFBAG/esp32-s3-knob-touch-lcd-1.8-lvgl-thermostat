@@ -123,6 +123,6 @@
 #endif
 
 #ifndef LCD_ENCODER_DEBUG_LOGS
-#define LCD_ENCODER_DEBUG_LOGS            1   // 1: log transitions/delta/detent/value writes
+#define LCD_ENCODER_DEBUG_LOGS            0   // 1: log transitions/delta/detent/value writes
 #endif
 #endif
