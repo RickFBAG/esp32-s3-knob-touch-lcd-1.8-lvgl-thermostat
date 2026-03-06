@@ -2,6 +2,7 @@
 #include "esp_lcd_sh8601.h"
 #include "lcd_config.h"
 #include "cst816.h"
+#include "components/haptics_bsp.h"
 #include "esp_idf_version.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -352,6 +353,7 @@ static void encoder_init(void)
   s_encoder_step_accum = 0;
   s_encoder_last_poll_ms = 0;
   s_encoder_ui_missing_logged = false;
+  (void)haptics_bsp_init();
   ENCODER_LOGI("ENC init: pinA=%d pinB=%d A=%u B=%u steps=%d invert=%d poll=%dms altPins=%d",
                LCD_ENCODER_PIN_A, LCD_ENCODER_PIN_B, s_encoder_a_level, s_encoder_b_level,
                LCD_ENCODER_STEPS_PER_DETENT, LCD_ENCODER_INVERT_DIRECTION,
@@ -406,6 +408,11 @@ static void encoder_poll_update_ui(void)
     if (value < min) value = min;
     if (value > max) value = max;
     lv_arc_set_value(ui_ArcDoel, value);
+    if (value != old_value) {
+      haptics_bsp_play_standard_tick();
+    } else {
+      haptics_bsp_play_limit_tick();
+    }
     ENCODER_LOGI("ENC detent: detent=%d old=%d new=%d min=%d max=%d accum_rem=%d",
                  detent, old_value, value, min, max, s_encoder_step_accum);
 

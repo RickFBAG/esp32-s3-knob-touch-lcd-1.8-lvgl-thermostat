@@ -125,4 +125,16 @@
 #ifndef LCD_ENCODER_DEBUG_LOGS
 #define LCD_ENCODER_DEBUG_LOGS            0   // 1: log transitions/delta/detent/value writes
 #endif
+
+#ifndef LCD_HAPTIC_FEEDBACK_ENABLED
+#define LCD_HAPTIC_FEEDBACK_ENABLED       1   // 1: enable DRV2605 haptics for encoder feedback
+#endif
+
+#ifndef LCD_HAPTIC_EFFECT_TICK
+#define LCD_HAPTIC_EFFECT_TICK            24  // Sharp Tick 1 - 100%
+#endif
+
+#ifndef LCD_HAPTIC_EFFECT_LIMIT
+#define LCD_HAPTIC_EFFECT_LIMIT           10  // Double Click - 100%
+#endif
 #endif
