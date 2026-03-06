@@ -34,10 +34,16 @@ extern lv_obj_t * ui____initial_actions0;
 LV_FONT_DECLARE(ui_font_Nunito);
 LV_FONT_DECLARE(ui_font_NunitoItalic20);
 LV_FONT_DECLARE(ui_font_Montserrat80);
+LV_FONT_DECLARE(lv_font_roboto_extralight_150);
+
+// IMAGES
+LV_IMG_DECLARE(icon_fan);
+LV_IMG_DECLARE(icon_list);
 
 // UI INIT
 void ui_init(void);
 void ui_destroy(void);
+void ui_update_temperature(int new_temp);
 
 #ifdef __cplusplus
 } /*extern "C"*/
